@@ -14,7 +14,7 @@ import teamService from '../../services/teamService';
 import useModalFlow from '../../hooks/useModalFlow';
 import useMarketTrends from '../../hooks/useMarketTrends';
 import useTeamService from '../../hooks/useTeamService';
-import { getPositionName, getPositionColor, extractArray } from '../../utils/helpers';
+import { getPositionName, getPositionColor, extractArray, readTeamMoney } from '../../utils/helpers';
 
 import PlayerRow from './TeamPlayers/PlayerRow';
 import BuyoutFlow from './TeamPlayers/BuyoutFlow';
@@ -215,9 +215,11 @@ const TeamPlayers = () => {
             setSelectedPlayer({ player, playerTeam });
             buyoutFlow.open();
             const moneyResponse = await fantasyAPI.getTeamMoney(teamId);
-            if (moneyResponse?.data) setTeamMoney(moneyResponse.data.teamMoney);
+            setTeamMoney(readTeamMoney(moneyResponse));
         } catch (_error) {
-            setTeamMoney(0);
+            // undefined = "no sabemos el saldo". NO ponemos 0: sería mentira y
+            // además bloquearía el formulario como si no tuvieras dinero.
+            setTeamMoney(undefined);
         }
     }, [teamId, buyoutFlow]);
 
@@ -226,9 +228,9 @@ const TeamPlayers = () => {
             setSelectedPlayer({ player, playerTeam });
             marketListFlow.open();
             const moneyResponse = await fantasyAPI.getTeamMoney(teamId);
-            if (moneyResponse?.data) setTeamMoney(moneyResponse.data.teamMoney);
+            setTeamMoney(readTeamMoney(moneyResponse));
         } catch (_error) {
-            setTeamMoney(0);
+            setTeamMoney(undefined);
         }
     }, [teamId, marketListFlow]);
 
@@ -247,7 +249,7 @@ const TeamPlayers = () => {
             if (!userTeamId) throw new Error('No se pudo encontrar tu equipo');
 
             const moneyResponse = await fantasyAPI.getTeamMoney(userTeamId);
-            setTeamMoney(moneyResponse?.data ? moneyResponse.data.teamMoney : 0);
+            setTeamMoney(readTeamMoney(moneyResponse));
             setSelectedPlayer({ player, playerTeam });
             bidFlow.open();
         } catch (_error) {

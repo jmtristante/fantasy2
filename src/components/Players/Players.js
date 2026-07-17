@@ -12,6 +12,7 @@ import PlayerDetailModal from '../Common/PlayerDetailModal';
 import marketTrendsService from '../../services/marketTrendsService';
 import playerOwnershipService from '../../services/playerOwnershipService';
 import useMarketTrends from '../../hooks/useMarketTrends';
+import usePlayerFaceBackfill from '../../hooks/usePlayerFaceBackfill';
 import { mapSpecialNameForTrends, normalizePlayerName } from '../../utils/playerNameMatcher';
 
 // La API marca así a los jugadores fuera de la liga (bajas o, en pretemporada,
@@ -228,6 +229,10 @@ const Players = () => {
     refetchOnMount: true,
     gcTime: 60 * 60 * 1000, // 1 hora en caché
   });
+
+  // Rellena caras que el feed masivo marca como no-player pero cuyo detalle sí
+  // tiene foto; parchea la caché ['allPlayers'] compartida.
+  usePlayerFaceBackfill(playersData, leagueId);
 
   // Optional: Get market data for pricing information (if available)
   const { data: marketData, refetch: refetchMarket } = useQuery({
@@ -727,7 +732,7 @@ const Players = () => {
       {/* Loading State */}
       {isDataLoading && !isInitialLoading && (
         <div className="card p-8">
-          <LoadingSpinner />
+          <LoadingSpinner label={null} />
           <p className="text-center text-gray-500 dark:text-gray-400 mt-4">
             Cargando datos de mercado y tendencias...
           </p>
@@ -768,7 +773,7 @@ const Players = () => {
         {/* Loading more indicator */}
         {isLoadingMore && (
           <div className="flex justify-center py-8">
-            <LoadingSpinner />
+            <LoadingSpinner label={null} />
             <span className="ml-3 text-gray-500 dark:text-gray-400">Cargando más jugadores...</span>
           </div>
         )}

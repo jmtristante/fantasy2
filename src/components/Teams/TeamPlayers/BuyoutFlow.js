@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { Shield } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Modal from '../../Common/Modal';
-import { formatNumberWithDots } from '../../../utils/helpers';
+import { formatNumberWithDots, isSuccessResponse } from '../../../utils/helpers';
+import { createMoneyInputHandler } from '../../../utils/moneyInput';
 import { fantasyAPI } from '../../../services/api';
 
 /**
@@ -66,7 +67,7 @@ const BuyoutFlow = ({
             // así que no basta con comprobar response.data: aceptamos el status
             // 2xx como éxito (igual que ShieldFlow). Antes esto dejaba el modal
             // colgado y parecía que "Aumentar Cláusula" no funcionaba.
-            if (response?.status === 200 || response?.status === 204 || response?.data) {
+            if (isSuccessResponse(response)) {
                 await refetch();
                 setIncreaseAmount('');
                 flow.reset();
@@ -107,7 +108,9 @@ const BuyoutFlow = ({
                             <div className="flex justify-between items-center">
                                 <span className="text-sm text-gray-600 dark:text-gray-400">Dinero disponible:</span>
                                 <span className="font-semibold text-gray-900 dark:text-white">
-                                    {teamMoney !== null ? `${formatNumberWithDots(teamMoney)}€` : 'Cargando...'}
+                                    {typeof teamMoney === 'number'
+                                        ? `${formatNumberWithDots(teamMoney)}€`
+                                        : teamMoney === null ? 'Cargando...' : 'No disponible'}
                                 </span>
                             </div>
                             <div className="flex justify-between items-center">
@@ -126,12 +129,12 @@ const BuyoutFlow = ({
                                 <input
                                     type="text"
                                     value={increaseAmount ? formatNumberWithDots(increaseAmount) : ''}
-                                    onChange={(e) => {
-                                        const value = e.target.value.replace(/\D/g, '');
-                                        if (value === '' || (parseInt(value) <= teamMoney && parseInt(value) >= 0)) {
-                                            setIncreaseAmount(value);
-                                        }
-                                    }}
+                                    // Handler compartido (dígitos + cursor estable), como el resto de
+                                    // inputs de dinero. Edición libre a propósito: NO validar aquí
+                                    // contra teamMoney — con teamMoney null/0 la guarda antigua se
+                                    // tragaba todas las teclas; el exceso ya se avisa en rojo abajo
+                                    // y deshabilita el botón "Aumentar".
+                                    onChange={createMoneyInputHandler(setIncreaseAmount)}
                                     placeholder="Ingresa la cantidad..."
                                     className="input-field w-full pr-8"
                                 />
@@ -164,7 +167,7 @@ const BuyoutFlow = ({
                                     </p>
                                 </div>
                             )}
-                            {teamMoney !== null && increaseAmount && parseInt(increaseAmount) > teamMoney && (
+                            {typeof teamMoney === 'number' && increaseAmount && parseInt(increaseAmount) > teamMoney && (
                                 <p className="text-sm text-red-600 dark:text-red-400">
                                     No tienes suficiente dinero. Máximo: {formatNumberWithDots(teamMoney)}€
                                 </p>
@@ -182,7 +185,7 @@ const BuyoutFlow = ({
                             <button
                                 type="button"
                                 onClick={goToConfirm}
-                                disabled={!increaseAmount || parseInt(increaseAmount) <= 0 || (teamMoney !== null && parseInt(increaseAmount) > teamMoney)}
+                                disabled={!increaseAmount || parseInt(increaseAmount) <= 0 || (typeof teamMoney === 'number' && parseInt(increaseAmount) > teamMoney)}
                                 className="flex-1 bg-yellow-500 hover:bg-yellow-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium py-2 px-4 rounded-lg transition-colors"
                             >
                                 Aumentar
