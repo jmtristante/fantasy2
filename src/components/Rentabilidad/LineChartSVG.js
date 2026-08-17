@@ -1,9 +1,10 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useCallback } from 'react';
 
 // Gráfico de líneas ligero en SVG (sin dependencias). Soporta múltiples series.
 // series: [{ nombre, datos: (number|null)[], color }]; fechas: string[].
 export default function LineChartSVG({ fechas, series, formatY = (v) => v, height = 320 }) {
   const wrapRef = useRef(null);
+  const svgRef = useRef(null);
   const [hover, setHover] = useState(null);
   const W = 800;
   const H = height;
@@ -13,15 +14,14 @@ export default function LineChartSVG({ fechas, series, formatY = (v) => v, heigh
   const padB = 24;
 
   const allVals = series.flatMap((s) => s.datos).filter((v) => v != null && Number.isFinite(v));
-  if (fechas.length === 0 || allVals.length === 0) {
-    return <div className="h-40 flex items-center justify-center text-gray-400 text-sm">Sin datos históricos.</div>;
-  }
-  const min = Math.min(...allVals);
-  const max = Math.max(...allVals);
+  const n = fechas.length;
+  const isEmpty = n === 0 || allVals.length === 0;
+
+  const min = isEmpty ? 0 : Math.min(...allVals);
+  const max = isEmpty ? 1 : Math.max(...allVals);
   const span = max - min || 1;
   const yMin = min - span * 0.05;
   const yMax = max + span * 0.05;
-  const n = fechas.length;
   const x = (i) => padL + (i / Math.max(1, n - 1)) * (W - padL - padR);
   const y = (v) => padT + (1 - (v - yMin) / (yMax - yMin)) * (H - padT - padB);
 
@@ -29,14 +29,20 @@ export default function LineChartSVG({ fechas, series, formatY = (v) => v, heigh
   const yTicks = Array.from({ length: ticks + 1 }, (_, i) => yMin + ((yMax - yMin) * i) / ticks);
   const xTickEvery = Math.ceil(n / 8);
 
-  const onMove = (e) => {
-    const rect = wrapRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const rel = ((e.clientX - rect.left) / rect.width) * W;
+  const onMove = useCallback((e) => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const scaleX = W / rect.width;
+    const rel = (e.clientX - rect.left) * scaleX;
     let i = Math.round(((rel - padL) / (W - padL - padR)) * (n - 1));
     i = Math.max(0, Math.min(n - 1, i));
     setHover(i);
-  };
+  }, [n]);
+
+  if (isEmpty) {
+    return <div className="h-40 flex items-center justify-center text-gray-400 text-sm">Sin datos históricos.</div>;
+  }
 
   return (
     <div>
@@ -47,7 +53,11 @@ export default function LineChartSVG({ fechas, series, formatY = (v) => v, heigh
         onMouseLeave={() => setHover(null)}
         style={{ position: 'relative' }}
       >
-        <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H}>
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${W} ${H}`}
+          style={{ width: '100%', height: 'auto', display: 'block' }}
+        >
           {yTicks.map((t, i) => (
             <g key={i}>
               <line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke="#e5e7eb" strokeDasharray="3 3" className="dark:stroke-gray-700" />
