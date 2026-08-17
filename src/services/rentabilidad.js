@@ -1,4 +1,4 @@
-import { fantasyAPI, resolveProxyOrigin } from './api';
+import { fantasyAPI } from './api';
 import { extractTeamPlayers } from '../utils/fetchAllTeamsData';
 import { useAuthStore } from '../stores/authStore';
 import {
@@ -32,9 +32,20 @@ const FECHA_INICIO_TEMPORADA = '2026-08-15T00:00:00.000Z';
 
 // Petición que NO pasa por el interceptor de api.js (evita toasts de
 // "Acceso denegado" cuando la API rechaza ver datos de otros managers).
+// Usa la misma URL base que el cliente api.js (respeta REACT_APP_API_BASE_URL).
 async function silentGet(path) {
   const token = useAuthStore.getState().getBearerToken();
-  const url = `${resolveProxyOrigin()}/api${path}`;
+  const isDev = process.env.NODE_ENV === 'development';
+  let base;
+  if (isDev) {
+    const port = process.env.REACT_APP_PROXY_PORT || '3005';
+    const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+    const host = window.location.hostname || 'localhost';
+    base = `${protocol}//${host}:${port}/api`;
+  } else {
+    base = (process.env.REACT_APP_API_BASE_URL || `${window.location.origin}/api`).replace(/\/$/, '');
+  }
+  const url = `${base}${path}`;
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), 10000);
   try {
