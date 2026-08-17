@@ -214,6 +214,27 @@ const createFantasyProxy = (config) => {
   };
 
   const handleProxyRes = (proxyRes, req, res) => {
+    if (process.env.LALIGA_DEBUG_DUMP) {
+      const url = req.originalUrl || '';
+      if (/standing|activity|money|lineup|teams-master|players/.test(url)) {
+        const chunks = [];
+        proxyRes.on('data', (c) => chunks.push(c));
+        proxyRes.on('end', () => {
+          let body;
+          try {
+            const buf = Buffer.concat(chunks);
+            const enc = (proxyRes.headers['content-encoding'] || '').toLowerCase();
+            if (enc.includes('gzip')) body = require('zlib').gunzipSync(buf).toString('utf8');
+            else if (enc.includes('deflate')) body = require('zlib').inflateSync(buf).toString('utf8');
+            else if (enc.includes('br')) body = require('zlib').brotliDecompressSync(buf).toString('utf8');
+            else body = buf.toString('utf8');
+          } catch {
+            body = '[no-decodable]';
+          }
+          console.log('[DEBUG-DUMP]', url, '=>', body.slice(0, 6000));
+        });
+      }
+    }
     const origin = req.headers.origin;
     if (origin) {
       proxyRes.headers['access-control-allow-origin'] = origin;

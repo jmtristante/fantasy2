@@ -8,6 +8,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { formatNumber, formatNumberWithDots, getPositionName, getPositionColor } from '../../utils/helpers';
 import LoadingSpinner from '../Common/LoadingSpinner';
 import ErrorDisplay from '../Common/ErrorDisplay';
+import TrendBadge from '../Common/TrendBadge';
 import PlayerDetailModal from '../Common/PlayerDetailModal';
 import marketTrendsService from '../../services/marketTrendsService';
 import playerOwnershipService from '../../services/playerOwnershipService';
@@ -69,6 +70,13 @@ const PlayerGridCard = React.memo(function PlayerGridCard({ player }) {
             </span>
           )}
         </div>
+
+        {/* Trend Badge - bottom right of photo */}
+        {player.trendData && (
+          <div className="absolute bottom-2 right-2">
+            <TrendBadge tendencia={player.trendData?.diferencia1} playerMasterId={player.id} />
+          </div>
+        )}
       </div>
 
       {/* Player Info Content */}

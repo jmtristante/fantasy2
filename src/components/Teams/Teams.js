@@ -1,15 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from '../../utils/motionShim';
-import { Users, Search, User, Trophy, ChevronRight, Target, RefreshCw } from 'lucide-react';
-import { Link, useLocation } from 'react-router-dom';
+import { Users, Search, User, Trophy, ChevronRight, RefreshCw } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 import { fantasyAPI } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
 import { formatCurrency, formatNumber, setImageFallback, extractArray } from '../../utils/helpers';
 import LoadingSpinner from '../Common/LoadingSpinner';
 import ErrorDisplay from '../Common/ErrorDisplay';
-import useMarketTrends from '../../hooks/useMarketTrends';
-import useTeamMarketIncreases from '../../hooks/useTeamMarketIncreases';
+
+const PRESUPUESTO_INICIAL = 100_000_000;
 
 const Teams = () => {
   const leagueId = useAuthStore((state) => state.leagueId);
@@ -36,11 +36,98 @@ const Teams = () => {
     gcTime: 5 * 60 * 1000, // 5 minutos en memoria
   });
 
-  // Market trends via el hook compartido (una query key para toda la app)
-  const { trendsReady: trendsInitialized } = useMarketTrends();
+  // Actividad de la liga para calcular cartera (100M - compras + ventas)
+  const { data: activityData } = useQuery({
+    queryKey: ['leagueActivity', leagueId],
+    queryFn: async () => {
+      const all = [];
+      for (let page = 0; page < 25; page++) {
+        const res = await fantasyAPI.getLeagueActivity(leagueId, page);
+        const arr = Array.isArray(res) ? res : res?.data || [];
+        if (!arr.length) break;
+        all.push(...arr);
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      return all;
+    },
+    enabled: !!leagueId,
+    staleTime: 2 * 60 * 1000,
+  });
 
-  // Team market value increases via the shared hook
-  const teamMarketIncreases = useTeamMarketIncreases(standings, leagueId, trendsInitialized);
+  // Cash real del usuario actual (solo él puede ver el suyo)
+  const userTeamId = useMemo(() => {
+    const teamsData = extractArray(standings);
+    for (const item of teamsData) {
+      const uid = item.userId || item.team?.userId || item.team?.manager?.id;
+      if (uid && user?.userId && uid.toString() === user.userId.toString()) {
+        return item.id || item.team?.id;
+      }
+    }
+    return null;
+  }, [standings, user]);
+
+  const { data: userTeamMoney } = useQuery({
+    queryKey: ['teamMoney', userTeamId],
+    queryFn: () => fantasyAPI.getTeamMoney(userTeamId),
+    enabled: userTeamId != null,
+    staleTime: 30 * 1000,
+  });
+
+  // Cartera por manager con ajuste de recompensas diarias
+  const carteraPorManager = useMemo(() => {
+    if (!activityData?.length) return new Map();
+    const cartera = new Map();
+    const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+
+    // Calcular cash estimado de cada manager (sin recompensas diarias)
+    for (const a of activityData) {
+      const t = a.activityTypeId;
+      const amount = num(a.amount);
+      const agregar = (mid, delta) => {
+        if (mid == null) return;
+        const id = Number(mid);
+        cartera.set(id, (cartera.get(id) || PRESUPUESTO_INICIAL) + delta);
+      };
+      if (t === 33) { // venta al mercado
+        agregar(a.user1Id, amount);
+      } else if (t === 1) { // traspaso entre managers
+        agregar(a.user1Id, -amount);
+        agregar(a.user2Id, amount);
+      } else if (t === 31 || t === 32) { // fichaje mercado / cláusula
+        agregar(a.user1Id, -amount);
+      }
+    }
+
+    // Ajustar con recompensas diarias: calcular la diferencia entre el cash
+    // real del usuario y el estimado, y asumir que todos han cobrado lo mismo.
+    if (userTeamId != null) {
+      const rawMoney = userTeamMoney?.data ?? userTeamMoney;
+      const cashReal = typeof rawMoney === 'number'
+        ? rawMoney
+        : rawMoney?.teamMoney ?? rawMoney?.amount ?? null;
+      if (cashReal != null) {
+        const mid = Number(user?.userId);
+        const estimado = cartera.get(mid) ?? PRESUPUESTO_INICIAL;
+        const bonusDiario = cashReal - estimado;
+        if (Number.isFinite(bonusDiario) && bonusDiario !== 0) {
+          // Sumar el bonus a todos
+          for (const [id, val] of cartera) {
+            cartera.set(id, val + bonusDiario);
+          }
+          // Inicializar los que no tenían movimientos
+          const teamsData = extractArray(standings);
+          for (const item of teamsData) {
+            const uid = item.userId || item.team?.userId || item.team?.manager?.id;
+            if (uid != null && !cartera.has(Number(uid))) {
+              cartera.set(Number(uid), PRESUPUESTO_INICIAL + bonusDiario);
+            }
+          }
+        }
+      }
+    }
+
+    return cartera;
+  }, [activityData, userTeamMoney, userTeamId, user, standings]);
 
   if (isLoading) return <LoadingSpinner fullScreen={true} />;
 
@@ -103,16 +190,11 @@ const Teams = () => {
     return item.id || item.team?.id;
   };
 
-  const getTeamMarketIncrease = (item) => {
-    const teamId = getTeamId(item);
-    return teamMarketIncreases.get(teamId) || 0;
+  const getCartera = (item) => {
+    const mid = getUserId(item);
+    return mid != null ? (carteraPorManager.get(Number(mid)) ?? PRESUPUESTO_INICIAL) : PRESUPUESTO_INICIAL;
   };
 
-  const formatMarketChange = (change) => {
-    if (!change || change === 0) return '0€';
-    const formattedValue = Math.abs(change).toLocaleString('es-ES');
-    return change > 0 ? `+${formattedValue}€` : `-${formattedValue}€`;
-  };
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -237,12 +319,12 @@ const Teams = () => {
                 </div>
 
                 {/* Stats - Responsive Grid */}
-                <div className="grid grid-cols-3 xl:flex xl:items-center gap-4 xl:gap-8 text-center xl:text-left overflow-hidden">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 xl:gap-8 text-right overflow-hidden">
                   <div className="min-w-0">
                     <p className="text-xs xl:text-sm text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate">
                       Puntos
                     </p>
-                    <p className="text-lg xl:text-2xl font-bold text-gray-900 dark:text-white truncate">
+                    <p className="text-lg xl:text-2xl font-bold text-gray-900 dark:text-white truncate tabular-nums">
                       {formatNumber(getTeamPoints(item))}
                     </p>
                   </div>
@@ -250,65 +332,36 @@ const Teams = () => {
                     <p className="text-xs xl:text-sm text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate">
                       Valor
                     </p>
-                    <p className="text-sm xl:text-lg font-semibold text-gray-900 dark:text-white truncate">
+                    <p className="text-sm xl:text-lg font-semibold text-gray-900 dark:text-white truncate tabular-nums">
                       {formatCurrency(getTeamValue(item))}
                     </p>
                   </div>
                   <div className="min-w-0">
                     <p className="text-xs xl:text-sm text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate">
-                      Subida 24h
+                      Cartera
                     </p>
-                    <p className={`text-sm font-medium truncate ${
-                      getTeamMarketIncrease(item) > 0
-                        ? 'text-green-600 dark:text-green-400'
-                        : getTeamMarketIncrease(item) < 0
-                        ? 'text-red-600 dark:text-red-400'
-                        : 'text-gray-600 dark:text-gray-400'
+                    <p className={`text-sm xl:text-lg font-semibold truncate tabular-nums ${
+                      getCartera(item) < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'
                     }`}>
-                      {formatMarketChange(getTeamMarketIncrease(item))}
+                      {getCartera(item) < 0 ? '-' : ''}{formatCurrency(getCartera(item))}
+                    </p>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs xl:text-sm text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate">
+                      Total
+                    </p>
+                    <p className={`text-sm xl:text-lg font-semibold truncate tabular-nums ${
+                      (getTeamValue(item) + getCartera(item)) < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'
+                    }`}>
+                      {(getTeamValue(item) + getCartera(item)) < 0 ? '-' : ''}{formatCurrency(getTeamValue(item) + getCartera(item))}
                     </p>
                   </div>
                 </div>
 
-                {/* Actions - Desktop */}
-                <div className="hidden md:flex items-center gap-3">
-                  <Link
-                    to={`/teams/${teamId}/lineup`}
-                    className="btn-secondary flex items-center gap-2"
-                  >
-                    <Target className="w-4 h-4" />
-                    <span className="hidden lg:inline">Alineación</span>
-                  </Link>
-                  <Link
-                    to={`/teams/${teamId}/players`}
-                    className="btn-secondary flex items-center gap-2"
-                  >
-                    <Users className="w-4 h-4" />
-                    <span className="hidden lg:inline">Jugadores</span>
-                  </Link>
-                  <ChevronRight className="w-5 h-5 text-gray-400" />
-                </div>
+                {/* Chevron */}
+                <ChevronRight className="w-5 h-5 text-gray-400 hidden md:block flex-shrink-0" />
               </div>
 
-              {/* Mobile Actions - Big Touch-Friendly Buttons */}
-              <div className="md:hidden mt-4 pt-4 border-t border-gray-200 dark:border-dark-border">
-                <div className="grid grid-cols-2 gap-3">
-                  <Link
-                    to={`/teams/${teamId}/lineup`}
-                    className="btn-primary flex items-center justify-center gap-2 py-3 text-base font-semibold"
-                  >
-                    <Target className="w-5 h-5" />
-                    <span>Alineación</span>
-                  </Link>
-                  <Link
-                    to={`/teams/${teamId}/players`}
-                    className="btn-secondary flex items-center justify-center gap-2 py-3 text-base font-semibold"
-                  >
-                    <Users className="w-5 h-5" />
-                    <span>Jugadores</span>
-                  </Link>
-                </div>
-              </div>
             </motion.div>
           );
         })}

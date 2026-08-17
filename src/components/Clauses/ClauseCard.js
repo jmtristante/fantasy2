@@ -3,6 +3,7 @@ import { motion } from '../../utils/motionShim';
 import { Shield, Clock, TrendingUp, User, Euro } from 'lucide-react';
 import { formatNumber, formatNumberWithDots, getPositionColor } from '../../utils/helpers';
 import ProgressiveImage from '../Common/ProgressiveImage';
+import TrendBadge from '../Common/TrendBadge';
 import { getClauseStatusColor, getClauseTimeRemaining } from '../../utils/clauseUtils';
 
 const getPositionBackgroundColor = () => 'bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-800';
@@ -42,6 +43,13 @@ const ClauseCard = React.memo(
               {clause.isLocked ? 'Bloqueado' : 'Disponible'}
             </span>
           </div>
+
+          {/* Trend Badge - bottom right of photo */}
+          {clause.trendData && (
+            <div className="absolute bottom-2 right-2">
+              <TrendBadge tendencia={clause.trendData?.diferencia1} playerMasterId={clause.playerId} />
+            </div>
+          )}
         </div>
 
         {/* Player Info */}
@@ -68,9 +76,26 @@ const ClauseCard = React.memo(
           {/* Clause Amount */}
           <div className="bg-yellow-50 dark:bg-gray-400/20 rounded-lg p-3">
             <p className="text-sm text-gray-600 dark:text-gray-300">Cláusula</p>
-            <p className="text-xl font-bold text-yellow-600 dark:text-yellow-400">
-              {formatNumberWithDots(clause.clausulaAmount)}€
-            </p>
+            <div className="flex items-baseline gap-2">
+              <p className="text-xl font-bold text-yellow-600 dark:text-yellow-400">
+                {formatNumberWithDots(clause.clausulaAmount)}€
+              </p>
+              {clause.marketValue > 0 && (
+                <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${
+                  (() => {
+                    const gap = ((clause.clausulaAmount - clause.marketValue) / clause.marketValue) * 100;
+                    if (gap <= 10) return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
+                    if (gap <= 30) return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400';
+                    return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
+                  })()
+                }`}>
+                  {(() => {
+                    const gap = ((clause.clausulaAmount - clause.marketValue) / clause.marketValue) * 100;
+                    return gap > 0 ? `+${gap.toFixed(0)}%` : `${gap.toFixed(0)}%`;
+                  })()}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Stats */}

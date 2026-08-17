@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { formatNumber, formatNumberWithDots, getPositionColor } from '../../utils/helpers';
 import teamService from '../../services/teamService';
 import { getClauseStatusColor } from '../../utils/clauseUtils';
+import TrendBadge from '../Common/TrendBadge';
 
 /**
  * PlayerListItem — single market card.
@@ -104,6 +105,13 @@ const PlayerListItem = ({
                 Disponible
               </span>
             )}
+          </div>
+        )}
+
+        {/* Trend Badge - bottom right of photo */}
+        {trendData && (
+          <div className="absolute bottom-2 right-2">
+            <TrendBadge tendencia={trendData?.diferencia1} playerMasterId={player.id} />
           </div>
         )}
       </div>

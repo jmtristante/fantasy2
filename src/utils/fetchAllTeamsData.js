@@ -58,8 +58,19 @@ export const fetchAllTeamsData = async (queryClient, leagueId, standings, option
  */
 export const extractTeamPlayers = (teamData) => {
     if (!teamData) return [];
+    if (Array.isArray(teamData)) return teamData;
     if (Array.isArray(teamData.players)) return teamData.players;
     if (Array.isArray(teamData.data?.players)) return teamData.data.players;
+    if (Array.isArray(teamData.data?.data)) return teamData.data.data;
+    if (Array.isArray(teamData.data)) return teamData.data;
+    // Forma antigua del API: formation con buckets por posición.
+    const form = teamData.formation || teamData.data?.formation;
+    if (form && typeof form === 'object') {
+        const buckets = ['goalkeeper', 'defender', 'midfield', 'forward'];
+        const out = [];
+        for (const b of buckets) if (Array.isArray(form[b])) out.push(...form[b]);
+        if (out.length) return out;
+    }
     return [];
 };
 

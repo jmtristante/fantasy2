@@ -3,6 +3,7 @@ import { motion } from '../../../utils/motionShim';
 import { Clock, Unlock, Shield, Plus, ShoppingCart, X, Trophy, TrendingUp } from 'lucide-react';
 import { formatNumber, formatNumberWithDots, getPositionName, getPositionColor } from '../../../utils/helpers';
 import { getClauseStatusColor, getClauseLockState } from '../../../utils/clauseUtils';
+import TrendBadge from '../../Common/TrendBadge';
 
 const PlayerRow = ({
     playerTeam,
@@ -60,6 +61,12 @@ const PlayerRow = ({
                             className="absolute inset-0 w-full h-full object-contain mt-3"
                             onError={(e) => { e.target.style.display = 'none'; }}
                         />
+                    )}
+                    {/* Trend Badge - bottom right of photo */}
+                    {trendData && (
+                        <div className="absolute bottom-2 right-2">
+                            <TrendBadge tendencia={trendData?.diferencia1} playerMasterId={player.id} />
+                        </div>
                     )}
                 </div>
 

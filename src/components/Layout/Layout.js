@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   Home, Trophy, ShoppingCart, Users, Calendar, Search, X, Moon, Sun,
   Activity, LogOut, Shield, User, Target, RefreshCw, Clock, Bug, FileText, Edit3,
+  TrendingUp,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -32,6 +33,8 @@ const MENU_ITEMS = [
   { path: '/players', icon: User, label: 'Jugadores' },
   { path: '/clauses', icon: Shield, label: 'Cláusulas' },
   { path: '/laliga-teams', icon: Trophy, label: 'Equipos de la Liga' },
+  { path: '/rentabilidad', icon: TrendingUp, label: 'Rentabilidad' },
+  { path: '/admin', icon: Shield, label: 'Admin Mapeos' },
 ];
 
 // ---------- shared classnames ----------

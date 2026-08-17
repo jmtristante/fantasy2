@@ -3,17 +3,21 @@ import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from '../../utils/motionShim';
 import useBodyScrollLock from '../../utils/useBodyScrollLock';
 import { createPortal } from 'react-dom';
-import { X, Trophy, TrendingUp, Calendar, Star, User, MapPin, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, Trophy, TrendingUp, Calendar, Star, User, MapPin, ChevronLeft, ChevronRight, BarChart3, LineChart } from 'lucide-react';
 import { fantasyAPI } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
 import LoadingSpinner from './LoadingSpinner';
 import QuickAlertButton from './QuickAlertButton';
 import { useCurrentWeek } from '../../hooks/useCurrentWeek';
-import { formatCurrencyCompact } from '../../utils/helpers';
+import { formatCurrencyCompact, formatNumberWithDots } from '../../utils/helpers';
+import { getPreciosDiariosJugador, isSupabaseConfigured } from '../../services/supabaseScraping';
+import { usePreciosActuales } from '../../contexts/PreciosActualesContext';
+import LineChartSVG from '../Rentabilidad/LineChartSVG';
 
 const PlayerDetailModal = ({ isOpen, onClose, player }) => {
   const [nextOpponent, setNextOpponent] = useState(null);
   const [selectedWeek, setSelectedWeek] = useState(null);
+  const [activeTab, setActiveTab] = useState('rendimiento');
   const leagueId = useAuthStore((state) => state.leagueId);
   const matchdayScrollRef = useRef(null);
 
@@ -48,6 +52,43 @@ const PlayerDetailModal = ({ isOpen, onClose, player }) => {
   const error = isTrendWithoutData
     ? 'Jugador de tendencias sin datos completos disponibles'
     : (queryError ? 'Error al cargar los detalles del jugador' : null);
+
+  // Jugador_id de scraping para precios diarios (resuelto via mapeo)
+  const { mapeo } = usePreciosActuales();
+  const jugadorIdScraping = useMemo(() => {
+    if (!player) return null;
+    // Intentar jugador_id directo (si viene del scraping)
+    if (player.jugador_id) return player.jugador_id;
+    // Mapear player_master_id -> jugador_id via tabla mapeo_jugadores
+    const pmId = player.id || player.matchedPlayer?.id;
+    if (pmId != null && mapeo.size > 0) {
+      const jid = mapeo.get(Number(pmId));
+      if (jid != null) return jid;
+    }
+    return null;
+  }, [player, mapeo]);
+
+  // Pestaña de evolución: precios diarios del jugador
+  const { data: preciosRows, isLoading: loadingPrecios } = useQuery({
+    queryKey: ['preciosDiarios', jugadorIdScraping],
+    queryFn: ({ signal }) => getPreciosDiariosJugador(jugadorIdScraping, signal),
+    enabled: isOpen && activeTab === 'evolucion' && isSupabaseConfigured() && jugadorIdScraping != null,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const seriePrecios = useMemo(() => {
+    const rows = preciosRows || [];
+    const byDay = new Map();
+    for (const r of rows) {
+      const d = new Date(r.fecha);
+      const lbl = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}`;
+      const ts = d.setHours(0, 0, 0, 0);
+      const cur = byDay.get(lbl);
+      if (!cur || ts >= cur.ts) byDay.set(lbl, { lbl, ts, valor: r.valor });
+    }
+    const arr = [...byDay.values()].sort((a, b) => a.ts - b.ts);
+    return { fechas: arr.map((x) => x.lbl), datos: arr.map((x) => x.valor) };
+  }, [preciosRows]);
 
   // Non-passive wheel listener so e.preventDefault() actually works.
   // React's synthetic onWheel registers as passive in modern browsers, which
@@ -349,9 +390,36 @@ const PlayerDetailModal = ({ isOpen, onClose, player }) => {
             })()}
           </div>
 
+          {/* Tabs */}
+          <div className="flex border-b border-gray-200 dark:border-dark-border px-6">
+            <button
+              onClick={() => setActiveTab('rendimiento')}
+              className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'rendimiento'
+                  ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+              }`}
+            >
+              <BarChart3 className="w-4 h-4" />
+              Rendimiento
+            </button>
+            <button
+              onClick={() => setActiveTab('evolucion')}
+              className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'evolucion'
+                  ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+              }`}
+            >
+              <LineChart className="w-4 h-4" />
+              Evolución
+            </button>
+          </div>
+
           {/* Content */}
-          <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
-            {loading ? (
+          <div className="p-6 overflow-y-auto max-h-[calc(90vh-240px)]">
+            {/* Tab: Rendimiento */}
+            {activeTab === 'rendimiento' && (loading ? (
               <div className="flex items-center justify-center py-12">
                 <LoadingSpinner />
               </div>
@@ -861,6 +929,68 @@ const PlayerDetailModal = ({ isOpen, onClose, player }) => {
                       })()}
                     </div>
                   </div>
+                )}
+              </div>
+            ))}
+
+            {/* Tab: Evolución de precio */}
+            {activeTab === 'evolucion' && (
+              <div className="space-y-4">
+                {loadingPrecios ? (
+                  <div className="flex items-center justify-center py-12">
+                    <LoadingSpinner />
+                  </div>
+                ) : seriePrecios.fechas.length === 0 ? (
+                  <div className="text-center py-12 text-gray-400">
+                    <LineChart className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                    <p>No hay datos de evolución de precio disponibles.</p>
+                    {(!isSupabaseConfigured() || jugadorIdScraping == null) && (
+                      <p className="text-xs mt-2">El jugador necesita estar mapeado en Supabase.</p>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-semibold text-gray-900 dark:text-gray-100">Evolución de precio</h3>
+                      <span className="text-sm text-gray-500 dark:text-gray-400">
+                        {seriePrecios.fechas.length} días
+                      </span>
+                    </div>
+                    <div className="card p-4">
+                      <LineChartSVG
+                        fechas={seriePrecios.fechas}
+                        series={[{
+                          nombre: player.nickname || player.name || 'Jugador',
+                          datos: seriePrecios.datos,
+                          color: '#2563eb',
+                        }]}
+                        formatY={formatCurrencyCompact}
+                        height={300}
+                      />
+                    </div>
+                    {seriePrecios.datos.length > 0 && (
+                      <div className="grid grid-cols-3 gap-3 text-center">
+                        <div className="card p-3">
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Actual</p>
+                          <p className="font-semibold text-gray-900 dark:text-white">
+                            {formatNumberWithDots(seriePrecios.datos[seriePrecios.datos.length - 1])}€
+                          </p>
+                        </div>
+                        <div className="card p-3">
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Máximo</p>
+                          <p className="font-semibold text-green-600 dark:text-green-400">
+                            {formatNumberWithDots(Math.max(...seriePrecios.datos))}€
+                          </p>
+                        </div>
+                        <div className="card p-3">
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Mínimo</p>
+                          <p className="font-semibold text-red-600 dark:text-red-400">
+                            {formatNumberWithDots(Math.min(...seriePrecios.datos))}€
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             )}

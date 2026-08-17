@@ -10,7 +10,8 @@ import teamService from '../../services/teamService';
 import { mapSpecialNameForTrends, findPlayerByNameAndPosition } from '../../utils/playerNameMatcher';
 import { validateClauseAmount } from '../../utils/validation';
 import { invalidateAfterClausePurchase } from '../../utils/cacheInvalidation';
-import { getPositionName, extractArray, readTeamMoney } from '../../utils/helpers';
+import { getClauseTimeRemaining } from '../../utils/clauseUtils';
+import { getPositionName, extractArray, readTeamMoney, formatNumberWithDots } from '../../utils/helpers';
 import { fetchAllTeamsData, extractTeamPlayers } from '../../utils/fetchAllTeamsData';
 
 import LoadingSpinner from '../Common/LoadingSpinner';
@@ -21,7 +22,6 @@ import useModalFlow from '../../hooks/useModalFlow';
 import useMarketTrends from '../../hooks/useMarketTrends';
 import useTeamService from '../../hooks/useTeamService';
 
-import ClauseCard from './ClauseCard';
 import ClauseFilters from './ClauseFilters';
 import PaymentFlow from './PaymentFlow';
 import PaymentConfirmModal from './PaymentConfirmModal';
@@ -190,24 +190,12 @@ const Clauses = () => {
         const clausulasInfo = [];
         const now = new Date();
 
-        const currentUserId = user?.userId?.toString();
-        // Skip the user's own team — players can't be clauseled from yourself.
-        const isRivalTeam = (rankData) => {
-          const teamManagerId =
-            rankData.team?.manager?.id ||
-            rankData.manager?.id ||
-            rankData.userId ||
-            rankData.team?.userId;
-          return !(currentUserId && teamManagerId && teamManagerId.toString() === currentUserId);
-        };
-
         // Shares the ['teamData'] cache with Teams.js: clause locks are
         // hour-granularity, so a few minutes of staleness is fine and a
         // Clauses <-> Teams navigation stops re-walking every roster.
         const teamsData = await fetchAllTeamsData(queryClient, leagueId, standings, {
           staleTime: 5 * 60 * 1000,
           gcTime: 15 * 60 * 1000,
-          shouldInclude: isRivalTeam,
         });
 
         for (const [teamId, { teamData, entry: rankData }] of teamsData) {
@@ -248,6 +236,7 @@ const Clauses = () => {
                 rankData.manager ||
                 rankData.team?.manager?.managerName ||
                 'Desconocido',
+              ownerUserId: rankData.userId || rankData.team?.userId || rankData.team?.manager?.id || null,
               ownerPosition: rankData.position,
               isLocked,
               unlockTime,
@@ -402,6 +391,21 @@ const Clauses = () => {
     [clausesData]
   );
 
+  // Nombre del usuario actual tal como aparece en las cláusulas
+  const currentOwnerName = useMemo(() => {
+    if (!standings || !user?.userId || !clausesData.length) return null;
+    const arr = extractArray(standings);
+    const me = arr.find((t) => {
+      const uid = t.userId || t.team?.userId || t.team?.manager?.id;
+      return uid && uid.toString() === user.userId.toString();
+    });
+    if (!me) return null;
+    const myTeamId = (me.id || me.team?.id)?.toString();
+    if (!myTeamId) return null;
+    const match = clausesData.find((c) => c.teamId?.toString() === myTeamId);
+    return match?.ownerName || null;
+  }, [standings, user, clausesData]);
+
   const filteredClauses = useMemo(
     () =>
       clausesData.filter((clause) => {
@@ -485,6 +489,7 @@ const Clauses = () => {
         filteredClauses={filteredClauses}
         clausesData={clausesData}
         uniqueOwners={uniqueOwners}
+        currentOwnerName={currentOwnerName}
       />
 
       {/* Loading State */}
@@ -494,19 +499,90 @@ const Clauses = () => {
         </div>
       )}
 
-      {/* Clauses Grid */}
+      {/* Clauses Table */}
       {!loading && (
         <>
           {filteredClauses.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {filteredClauses.map((clause, index) => (
-                <ClauseCard
-                  key={`${clause.playerId}-${index}`}
-                  clause={clause}
-                  onClick={() => handlePlayerClick(clause)}
-                  onPayClause={() => handlePayClause(clause)}
-                />
-              ))}
+            <div className="card overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-left">
+                      <th className="p-3">Jugador</th>
+                      <th className="p-3">Pos</th>
+                      <th className="p-3 text-right">Cláusula</th>
+                      <th className="p-3 text-right">Valor</th>
+                      <th className="p-3 text-right">Gap</th>
+                      <th className="p-3 text-right">Puntos</th>
+                      <th className="p-3 text-center">Estado</th>
+                      <th className="p-3">Manager</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                    {filteredClauses.map((clause, index) => {
+                      const gap = clause.marketValue > 0
+                        ? ((clause.clausulaAmount - clause.marketValue) / clause.marketValue) * 100
+                        : null;
+                      const gapColor = gap == null ? ''
+                        : gap <= 10 ? 'text-green-600 dark:text-green-400'
+                        : gap <= 30 ? 'text-yellow-600 dark:text-yellow-400'
+                        : 'text-red-600 dark:text-red-400';
+
+                      return (
+                        <tr
+                          key={`${clause.playerId}-${index}`}
+                          onClick={() => handlePlayerClick(clause)}
+                          className={`cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${
+                            clause.isLocked ? 'opacity-60' : ''
+                          }`}
+                        >
+                          <td className="p-3">
+                            <div className="flex items-center gap-2">
+                              {clause.playerImage && (
+                                <img src={clause.playerImage} alt="" className="w-8 h-8 rounded-full object-cover" />
+                              )}
+                              <span className="font-medium text-gray-900 dark:text-white">{clause.playerName}</span>
+                            </div>
+                          </td>
+                          <td className="p-3">
+                            <span className={`badge ${clause.positionId === 1 ? 'bg-yellow-100 text-yellow-800' : clause.positionId === 2 ? 'bg-blue-100 text-blue-800' : clause.positionId === 3 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                              {clause.position}
+                            </span>
+                          </td>
+                          <td className="p-3 text-right font-semibold text-yellow-600 dark:text-yellow-400">
+                            {formatNumberWithDots(clause.clausulaAmount)}€
+                          </td>
+                          <td className="p-3 text-right text-gray-700 dark:text-gray-300">
+                            {formatNumberWithDots(clause.marketValue)}€
+                          </td>
+                          <td className={`p-3 text-right font-medium ${gapColor}`}>
+                            {gap != null ? `${gap > 0 ? '+' : ''}${gap.toFixed(0)}%` : '—'}
+                          </td>
+                          <td className="p-3 text-right text-gray-700 dark:text-gray-300">
+                            {clause.points}
+                          </td>
+                          <td className="p-3 text-center">
+                            {clause.isLocked ? (
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400">
+                                🔒 {getClauseTimeRemaining(clause.unlockTime)}
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); handlePayClause(clause); }}
+                                className="text-xs font-medium text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300"
+                              >
+                                ✅ Pagar
+                              </button>
+                            )}
+                          </td>
+                          <td className="p-3 text-gray-700 dark:text-gray-300">{clause.ownerName}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           ) : (
             <div className="card p-12">

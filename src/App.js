@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { HashRouter  as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { PreciosActualesProvider } from './contexts/PreciosActualesContext';
 import Layout from './components/Layout/Layout';
 import LoadingSpinner from './components/Common/LoadingSpinner';
 import RouteErrorBoundary from './components/Common/RouteErrorBoundary';
@@ -25,6 +26,8 @@ const MarketTrends = React.lazy(() => import(/* webpackChunkName: "market-trends
 const AlertManager = React.lazy(() => import(/* webpackChunkName: "alerts" */ './components/Alerts/AlertManager'));
 const Settings = React.lazy(() => import(/* webpackChunkName: "settings" */ './components/Settings/Settings'));
 const OncesProbles = React.lazy(() => import(/* webpackChunkName: "onces" */ './components/OncesProbles/OncesProbles'));
+const Rentabilidad = React.lazy(() => import(/* webpackChunkName: "rentabilidad" */ './components/Rentabilidad/Rentabilidad'));
+const AdminMapeos = React.lazy(() => import(/* webpackChunkName: "admin" */ './components/Admin/AdminMapeos'));
 
 function App() {
   const initializeAuth = useAuthStore((state) => state.initializeAuth);
@@ -36,6 +39,7 @@ function App() {
 
   return (
     <ThemeProvider>
+      <PreciosActualesProvider>
       <Router>
         <Routes>
           {/* OAuth callback routes - always accessible */}
@@ -47,6 +51,7 @@ function App() {
           <Route path="/*" element={<AppRoutes />} />
         </Routes>
       </Router>
+      </PreciosActualesProvider>
     </ThemeProvider>
   );
 }
@@ -102,6 +107,8 @@ function AppRoutes() {
         <Route path="/alerts" element={<AlertManager />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/onces-probables" element={<OncesProbles />} />
+        <Route path="/rentabilidad" element={<Rentabilidad />} />
+        <Route path="/admin" element={<AdminMapeos />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
       </React.Suspense>
