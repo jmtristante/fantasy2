@@ -65,8 +65,8 @@ export default function AdminMapeos() {
     staleTime: 30 * 1000,
   });
 
-  const laLigaList = Array.isArray(laLigaPlayers) ? laLigaPlayers : [];
-  const scrapingList = Array.isArray(scrapingPlayers) ? scrapingPlayers : [];
+  const laLigaList = useMemo(() => Array.isArray(laLigaPlayers) ? laLigaPlayers : [], [laLigaPlayers]);
+  const scrapingList = useMemo(() => Array.isArray(scrapingPlayers) ? scrapingPlayers : [], [scrapingPlayers]);
 
   const [filterLaLiga, setFilterLaLiga] = useState('');
   const [filterScraping, setFilterScraping] = useState('');

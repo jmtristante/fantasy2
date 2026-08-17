@@ -257,7 +257,7 @@ const Clauses = () => {
         setLoading(false);
       }
     },
-    [standings, leagueId, lastFetchTime, clausesData, sortClausesData, queryClient, user?.userId]
+    [standings, leagueId, lastFetchTime, clausesData, sortClausesData, queryClient]
   );
 
   // Fetch data when standings arrive / trends are ready
