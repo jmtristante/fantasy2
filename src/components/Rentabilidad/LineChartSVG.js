@@ -47,7 +47,7 @@ export default function LineChartSVG({ fechas, series, formatY = (v) => v, heigh
         onMouseLeave={() => setHover(null)}
         style={{ position: 'relative' }}
       >
-        <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none">
+        <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H}>
           {yTicks.map((t, i) => (
             <g key={i}>
               <line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke="#e5e7eb" strokeDasharray="3 3" className="dark:stroke-gray-700" />
